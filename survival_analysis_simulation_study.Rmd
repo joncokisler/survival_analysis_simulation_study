@@ -32,6 +32,7 @@ library(extRemes)
 library(patchwork)
 library(truncnorm)
 
+theme_set(theme_minimal(base_size = 14))
 knitr::opts_chunk$set(warning = FALSE)
 ```
 
@@ -89,6 +90,7 @@ aft <- survreg(Surv(time, status) ~ factor(group), data=tibble(time, status,
                                                                group),
                dist = "weibull")
 summary(aft)
+
 ```
 
 We can see from the output of the AFT model, $\hat{\beta_0} = 3.05 \approx 3$, which was our input, represented in the variable `scale_base`. The `scale` value from the AFT model output is 1.16, and when we take its inverse, as we input into the sampling function, $\frac{1}{\hat{\tau}}=\frac{1}{1.16} = 0.86 \approx 0.8$. The $\hat{\beta_1}$ is also close to our original input: $\hat{\beta_1} = 0.65 \approx 0.7$. Therefore, we can conclude that our data generating process, and our characterizations are correct, since the AFT model estimates align with our original inputs.
@@ -100,17 +102,17 @@ The censoring being simulated here has two components. 1. Type I Right Censoring
 ```{r}
 set.seed(10)
 # Censoring Rate = 0.4
-c_values <- rtruncnorm(n, a=0, mean=20, sd=30)
+c_values <- rtruncnorm(n, a = 0, mean = 20, sd = 30)
 time <- c(T_placebo, T_treatment)
 
 status <- rep(NA, n)
 
-for(i in 1:n){
-  if(time[i] > 120){
+for (i in 1:n) {
+  if (time[i] > 120) {
     status[i] <- 0
     time[i] <- 120
   }
-  else if(c_values[i] < time[i]){
+  else if (c_values[i] < time[i]) {
     status[i] <- 0
   }
   else{
@@ -119,20 +121,20 @@ for(i in 1:n){
 }
 
 df_40_percent <- data.frame(time, status, group)
-paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+paste("This censoring rate is:", 100 * (1 - (sum(status) / n)), "%")
 #--------------------------------------------------------------------
 # Censoring Rate = 0.2
-c_values <- rtruncnorm(n, a=0, mean=60, sd=30)
+c_values <- rtruncnorm(n, a = 0, mean = 60, sd = 30)
 time <- c(T_placebo, T_treatment)
 
 status <- rep(NA, n)
 
-for(i in 1:n){
-  if(time[i] > 120){
+for (i in 1:n) {
+  if (time[i] > 120) {
     status[i] <- 0
     time[i] <- 120
   }
-  else if(c_values[i] < time[i]){
+  else if (c_values[i] < time[i]) {
     status[i] <- 0
   }
   else{
@@ -141,21 +143,21 @@ for(i in 1:n){
 }
 
 df_20_percent <- data.frame(time, status, group)
-paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+paste("This censoring rate is:", 100 * (1 - (sum(status) / n)), "%")
 
 #--------------------------------------------------------------------
 # Censoring Rate = 0.1
-c_values <- rtruncnorm(n, a=0, mean=90, sd=30)
+c_values <- rtruncnorm(n, a = 0, mean = 90, sd = 30)
 time <- c(T_placebo, T_treatment)
 
 status <- rep(NA, n)
 
-for(i in 1:n){
-  if(time[i] > 120){
+for (i in 1:n) {
+  if (time[i] > 120) {
     status[i] <- 0
     time[i] <- 120
   }
-  else if(c_values[i] < time[i]){
+  else if (c_values[i] < time[i]) {
     status[i] <- 0
   }
   else{
@@ -164,7 +166,7 @@ for(i in 1:n){
 }
 
 df_10_percent <- data.frame(time, status, group)
-paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+paste("This censoring rate is:", 100 * (1 - (sum(status) / n)), "%")
 
 #--------------------------------------------------------------------
 # Censoring Rate = 0 (Only Type I Right Censor present)
@@ -172,8 +174,8 @@ time <- c(T_placebo, T_treatment)
 
 status <- rep(NA, n)
 
-for(i in 1:n){
-  if(time[i] > 120){
+for (i in 1:n) {
+  if (time[i] > 120) {
     status[i] <- 0
     time[i] <- 120
   }
@@ -183,7 +185,7 @@ for(i in 1:n){
 }
 
 df_0_percent <- data.frame(time, status, group)
-paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+paste("This censoring rate is:", 100 * (1 - (sum(status) / n)), "%")
 ```
 
 ### Cox Proportional Hazards Model Fitting and Evaluation
@@ -192,29 +194,69 @@ paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
 
 ```{r}
 km_40_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
-                             data=df_40_percent)
+                             data = df_40_percent)
 km_20_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
-                             data=df_20_percent)
+                             data = df_20_percent)
 km_10_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
-                             data=df_10_percent)
+                             data = df_10_percent)
 km_0_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
-                             data=df_0_percent)
+                            data = df_0_percent)
 ```
 
 ##### Visualizing Survival Probabilities
 
 ```{r, fig.align = 'center'}
 pl1 <- ggsurvplot(km_40_pct_censor, title = "KM Estimates 40% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl2 <- ggsurvplot(km_20_pct_censor, title = "KM Estimates 20% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl3 <- ggsurvplot(km_10_pct_censor, title = "KM Estimates 10% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl4 <- ggsurvplot(km_0_pct_censor, title = "KM Estimates 4% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl1$plot + pl2$plot
 pl3$plot + pl4$plot
@@ -252,13 +294,53 @@ summary(cox_model4)
 
 ##### Assessing Proportional Hazards Assumption
 
-```{r, fig.align = 'center'}
+```{r, fig.align = 'center', echo=FALSE, message=FALSE, warning=FALSE}
 
-ggsurvplot(km_40_pct_censor, fun = "cloglog")$plot +
-  ggsurvplot(km_20_pct_censor, fun = "cloglog")$plot
+ggsurvplot(km_40_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot +
+  ggsurvplot(km_20_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot
 
-ggsurvplot(km_10_pct_censor, fun = "cloglog")$plot +
-  ggsurvplot(km_0_pct_censor, fun = "cloglog")$plot
+ggsurvplot(km_10_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot +
+  ggsurvplot(km_0_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot
 ```
 
 The visual assessment of the Proportional Hazards assumption seems to hold, since the log(-log) survival probabilities for both groups are parallel. However, there is a single point where they appear to touch, to investigate further, we can perform a `cox.zph` test.
@@ -272,37 +354,54 @@ cox.zph(cox_model4)
 
 The null hypothesis of this test is that the PH assumption holds. And since none of the models have a p-value less than 0.05 for this test, we can conclude that the PH assumption holds.
 
-```{r}
-true_cox_ph_coeff <- -beta/(1/shape)
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+true_cox_ph_coeff <- -beta / (1 / shape)
 model1_coeff <- -0.5659
 model2_coeff <- -0.6256
 model3_coeff <- -0.54206
 model4_coeff <- -0.5575
 
-coefficients_df <- tibble(true_cox_ph_coeff, model1_coeff, model2_coeff,
-                          model3_coeff, model4_coeff)
+coefficients_df <-
+  tibble(true_cox_ph_coeff,
+         model1_coeff,
+         model2_coeff,
+         model3_coeff,
+         model4_coeff)
 
 
 coefficients_df <- data.frame(
   coefficient = c("40% Cens.", "20% Cens.", "10% Cens.", "4% Cens."),
-  value = c(-0.5659, -0.6256, -0.54206, -0.5575),
+  value = c(-0.5659,-0.6256,-0.54206,-0.5575),
   SE = c(0.1180, 0.1027, 0.09659, 0.0940)
 )
 
 coefficients_df$exponential <- exp(coefficients_df$value)
-coefficients_df$lower <- exp(coefficients_df$value - coefficients_df$SE) # Lower bound
-coefficients_df$upper <- exp(coefficients_df$value + coefficients_df$SE) # Upper bound
+coefficients_df$lower <-
+  exp(coefficients_df$value - coefficients_df$SE) # Lower bound
+coefficients_df$upper <-
+  exp(coefficients_df$value + coefficients_df$SE) # Upper bound
 
 
 # Create a bar plot for exponential coefficient values and se's
 ggplot(coefficients_df, aes(x = coefficient, y = exponential)) +
   geom_bar(stat = "identity", fill = "lightgreen") +
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.1, color = "black") +
-  geom_hline(yintercept = exp(true_cox_ph_coeff), color = "red",
-             linetype = "dashed", size = 0.5) +
-  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff) + 0.1,
-           label = "True Hazard Ratio Value",
-           color = "red", hjust = 0.5) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),
+                width = 0.1,
+                color = "black") +
+  geom_hline(
+    yintercept = exp(true_cox_ph_coeff),
+    color = "red",
+    linetype = "dashed",
+    size = 0.5
+  ) +
+  annotate(
+    "text",
+    x = 2.5,
+    y = exp(true_cox_ph_coeff) + 0.1,
+    label = "True Hazard Ratio Value",
+    color = "red",
+    hjust = 0.5
+  ) +
   labs(title = "Comparison of Exponential Coefficients Against True Coefficient",
        x = "Model",
        y = "Exponential Value of Estimated Coefficients") +
@@ -481,18 +580,58 @@ km_0_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
 
 ##### Visualizing Survival Probabilities
 
-```{r, fig.align = 'center'}
+```{r, fig.align = 'center', echo=FALSE, message=FALSE, warning=FALSE}
 pl1 <- ggsurvplot(km_40_pct_censor, title = "KM Estimates 40% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl2 <- ggsurvplot(km_20_pct_censor, title = "KM Estimates 20% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl3 <- ggsurvplot(km_10_pct_censor, title = "KM Estimates 10% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl4 <- ggsurvplot(km_0_pct_censor, title = "KM Estimates 4% Censoring",
-                  conf.int = TRUE, censor.shape = "|")
+                  conf.int = TRUE, censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))
 
 pl1$plot + pl2$plot
 pl3$plot + pl4$plot
@@ -522,12 +661,52 @@ summary(cox_model4)
 
 ##### Checking Proportional Hazards Assumption
 
-```{r, fig.align = 'center'}
-ggsurvplot(km_40_pct_censor, fun = "cloglog")$plot +
-  ggsurvplot(km_20_pct_censor, fun = "cloglog")$plot
+```{r, fig.align = 'center', echo=FALSE, message=FALSE, warning=FALSE}
+ggsurvplot(km_40_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot +
+  ggsurvplot(km_20_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot
 
-ggsurvplot(km_10_pct_censor, fun = "cloglog")$plot +
-  ggsurvplot(km_0_pct_censor, fun = "cloglog")$plot
+ggsurvplot(km_10_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot +
+  ggsurvplot(km_0_pct_censor, fun = "cloglog", censor.shape = 124,
+  censor.size = 2.5,
+  palette = c("#0072B2", "#D55E00"),
+  legend.labs = c("Placebo", "Treatment"),
+  legend.title = "Group",
+  xlab = "Time (days)",
+  ylab = "Survival Probability",
+  risk.table = TRUE,
+  risk.table.col = "strata",
+  risk.table.height = 0.2,
+  ggtheme = theme_minimal(base_size = 14))$plot
 ```
 
 The visual assessment shows that the survival curves are parallel, yet there is a single point of intersection, to evaluate further, we can perform a `cox.zph` test.
@@ -541,7 +720,7 @@ cox.zph(cox_model4)
 
 From the results of the tests, we see that none of the p-values are less than 0.05, so the Proportional Hazards assumption holds for all models.
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 true_cox_ph_coeff_GROUP <- -beta/(1/shape)
 model1_coeff_GROUP <- -0.46007
 model2_coeff_GROUP <- -0.52070
@@ -570,28 +749,34 @@ coefficients_df$lower <- exp(coefficients_df$value - coefficients_df$SE)
 coefficients_df$upper <- exp(coefficients_df$value + coefficients_df$SE)
 
 
-#  grouped bar plot with error bars
+# grouped bar plot with error bars
 ggplot(coefficients_df, aes(x = model, y = exponential, fill = covariate)) +
-  geom_bar(stat = "identity", position = position_dodge(), width = 0.6) +
-  geom_errorbar(aes(ymin = lower, ymax = upper), position = position_dodge(0.6),
-                width = 0.25, color = "black") +
-  geom_hline(yintercept = exp(true_cox_ph_coeff_GROUP), color = "red",
-             linetype = "dashed", size = 0.5) +
-  geom_hline(yintercept = exp(true_cox_ph_coeff_CIGS), color = "blue",
-             linetype = "dashed", size = 0.5) +
-  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff_GROUP) + 0.05,
-           label = "True GROUP Coefficient", color = "red", hjust = 0.5) +
-  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff_CIGS) + 0.05,
-           label = "True CIGS Coefficient", color = "blue", hjust = 0.5) +
-  labs(title = "Comparison of Exponential Coefficients Against True Coefficients",
-       x = "Model",
-       y = "Exponential Value") +
-  scale_fill_manual(values = c("lightgreen", "skyblue"),
-                    labels = c("GROUP", "CIGS")) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.title = element_blank())
-
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), 
+                position = position_dodge(width = 0.7), width = 0.2) +
+  geom_hline(yintercept = exp(true_cox_ph_coeff_GROUP), color = "#D55E00", 
+             linetype = "dashed", size = 0.8) +
+  geom_hline(yintercept = exp(true_cox_ph_coeff_CIGS), color = "#0072B2", 
+             linetype = "dashed", size = 0.8) +
+  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff_GROUP) + 0.1,
+           label = "True GROUP HR", color = "#D55E00", fontface = "italic") +
+  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff_CIGS) + 0.1,
+           label = "True CIGS HR", color = "#0072B2", fontface = "italic") +
+  labs(
+    title = "Estimated Hazard Ratios by Censoring Level",
+    x = "Censoring Level",
+    y = "Hazard Ratio (exp(coef))"
+  ) +
+  scale_fill_manual(
+    values = c("GROUP" = "#F0E442", "CIGS" = "#56B4E9"),
+    labels = c("Treatment Group", "Cigarettes per Day")
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5),
+    legend.title = element_blank()
+  )
 ```
 
 Interestingly, the exponential coefficient estimates for the continuous predictor `cigarettes_per_day` are relatively stable despite the different censoring rates. However, in this simulation the treatment group covariates are impacted more by the higher censoring rates, than the previous simulation. We can see that there is a considerable divergence in the coefficient estimate of treatment group compared to the true coefficient, in the higher censoring rate models; and they also have much larger standard errors.
@@ -604,4 +789,4 @@ The hazard of relapse for individuals who are quitting smoking is $1.726$ larger
 
 ## Conclusion
 
-Contrary to my intuition, the Cox Proportional Hazards model was fairly robust to higher censoring rates, and was able to produce very close estimates of the Hazard ratios. However, coefficient estimates for the treatment group suffered more from the higher censoring rates in the 2nd simulation, which might indicate that including a continuous covariate on top of the treatment group covariate makes the Cox PH model more biased when the data has higher censoring rates.
+Contrary to my intuition, the Cox Proportional Hazards model was fairly robust to higher censoring rates, and was able to produce very close estimates of the Hazard ratios. This is thanks to Cox model's partial likelihood, which is known to be fairly robust to moderate censoring, especially if censoring is non-informative. However, coefficient estimates for the treatment group suffered more from the higher censoring rates in the 2nd simulation, which might indicate that including a continuous covariate with the treatment group covariate makes the Cox PH model more biased when the data has higher censoring rates.
