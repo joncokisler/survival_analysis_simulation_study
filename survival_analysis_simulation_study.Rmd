@@ -1,0 +1,607 @@
+---
+title: "Examining the Effects of Censoring Rate on Survival Models: A Simulation Study"
+author:
+- Jon Cokisler
+date: "`r format(Sys.time(), '%d %B %Y')`"
+format: pdf
+editor: visual
+geometry: margin=1.5cm
+output:
+  pdf_document:
+    fig_crop: no
+---
+
+In this simulation study, I am going to examine the Cox Proportional Hazards Model under certain experimental design, and censoring conditions. The story behind the simulations: The simulated data come from an imaginary study examining the effectiveness of Nicotine Replacement Therapy in quitting smoking. The studies are Randomized Control Trials, where the participants are randomly assigned to either the placebo group, or treatment group. The placebo group receives a placebo of the nicotine gum, where as the treatment group receives actual nicotine gum. The participants in this study are smokers, and they are asked to stop smoking as soon as they are assigned their treatment group and given the treatment. The outcome variable in this study is days until relapse (consumption of a cigarette), where the origin event is the start of the experiment phase, where the participants are given the treatment/placebo, and the end event is the first relapse for the participants. There will be two focuses in this study:
+
+1.  Effect of censoring rate on Cox PH model, in a Randomized Control Trial setting, with a single factor, treatment group (treatment/placebo).
+2.  Effect of censoring rate on Cox PH model, in an RCT setting, with two factors:
+
+-   Treatment group: Treatment / Placebo
+-   Number of cigarettes consumed per day
+
+The study is 4 months (120 days) long.
+
+```{r, include=FALSE}
+library(EnvStats)
+library(survival)
+library(survminer)
+library(dplyr)
+library(tidyverse)
+library(ordinal)
+library(extRemes)
+library(patchwork)
+library(truncnorm)
+
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+# Simulation 1: Placebo-Treatment (Nicotine Replacement Therapy) Simulation - Days to Relapse, One covariate
+
+### Data Generation Process
+
+We are looking to generate $T$ values, where $T$ is the days until first relapse. To accomplish this, we are assuming an underlying Weibull data generating process, by sampling from the Weibull distribution.
+
+We want to generate the data with some common sense, so I converted the `rweibull()` parameters into what we used in class for our AFT model. The base R Weibull sampling function `rweibull()` has 3 parameters:
+
+-   n: number of observations
+-   shape: shape -\> $\kappa$
+-   scale: scale -\> $\lambda$
+
+Turns out, these parameters translate into our parameterization of the AFT model in the following way:
+
+-   shape: $\kappa$ = $\frac{1}{\tau}$
+-   scale: $\lambda$ = $\exp(\beta_0 + \beta_1z_1)$
+
+Therefore, for our data generating process, we will use the following: rbinom($n$, shape=$\tau$, scale=$\exp(\beta_0 + \beta_1z_1)$)
+
+```{r}
+set.seed(11)
+
+n <- 500
+
+n_treatment <- n / 2
+n_placebo <- n / 2
+
+shape <- 0.8     # Shape parameter (Weibull) -> 1/scale = Tau
+scale_base <- 3     # Baseline scale parameter -> intercept
+beta <- 0.7       # Treatment effect = Beta
+
+# Simulate survival times for placebo group
+scale_placebo <- exp(scale_base)
+T_placebo <- rweibull(n_placebo, shape = shape, scale = scale_placebo)
+
+# Simulate survival times for treatment group
+scale_treatment <- exp(scale_base)* exp(beta)
+T_treatment <- rweibull(n_treatment, shape = shape, scale = scale_treatment)
+
+
+time <- c(T_placebo, T_treatment)
+status <- rep(1, n)
+group <- rep(c("Placebo", "Treatment"), each = n/2)
+```
+
+### Verifying The Data Generation
+
+Verifying that the data generation process is correct, and that the parameters we input into the Weibull sampling function, is crucial. Thankfully, it is also relatively easy to check. We can fit a Weibull AFT model using our simulated data, and if the estimates outputted by the model are close to our starting parameters, then we know our data generating process worked correctly.
+
+```{r}
+aft <- survreg(Surv(time, status) ~ factor(group), data=tibble(time, status,
+                                                               group),
+               dist = "weibull")
+summary(aft)
+```
+
+We can see from the output of the AFT model, $\hat{\beta_0} = 3.05 \approx 3$, which was our input, represented in the variable `scale_base`. The `scale` value from the AFT model output is 1.16, and when we take its inverse, as we input into the sampling function, $\frac{1}{\hat{\tau}}=\frac{1}{1.16} = 0.86 \approx 0.8$. The $\hat{\beta_1}$ is also close to our original input: $\hat{\beta_1} = 0.65 \approx 0.7$. Therefore, we can conclude that our data generating process, and our characterizations are correct, since the AFT model estimates align with our original inputs.
+
+### Censoring
+
+The censoring being simulated here has two components. 1. Type I Right Censoring - The simulated study takes place in a 120 day period, therefore the subjects that have not relapsed by the 120-day mark, are censored. 2. Random Censoring - Random censoring due to non-study determined factors. We are simulating this type of censoring by sampling from a normal distribution, with various different parameter values to achieve different censoring rates.
+
+```{r}
+set.seed(10)
+# Censoring Rate = 0.4
+c_values <- rtruncnorm(n, a=0, mean=20, sd=30)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else if(c_values[i] < time[i]){
+    status[i] <- 0
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_40_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+#--------------------------------------------------------------------
+# Censoring Rate = 0.2
+c_values <- rtruncnorm(n, a=0, mean=60, sd=30)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else if(c_values[i] < time[i]){
+    status[i] <- 0
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_20_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+
+#--------------------------------------------------------------------
+# Censoring Rate = 0.1
+c_values <- rtruncnorm(n, a=0, mean=90, sd=30)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else if(c_values[i] < time[i]){
+    status[i] <- 0
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_10_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+
+#--------------------------------------------------------------------
+# Censoring Rate = 0 (Only Type I Right Censor present)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_0_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+```
+
+### Cox Proportional Hazards Model Fitting and Evaluation
+
+##### Fitting the models
+
+```{r}
+km_40_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_40_percent)
+km_20_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_20_percent)
+km_10_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_10_percent)
+km_0_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_0_percent)
+```
+
+##### Visualizing Survival Probabilities
+
+```{r, fig.align = 'center'}
+pl1 <- ggsurvplot(km_40_pct_censor, title = "KM Estimates 40% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl2 <- ggsurvplot(km_20_pct_censor, title = "KM Estimates 20% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl3 <- ggsurvplot(km_10_pct_censor, title = "KM Estimates 10% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl4 <- ggsurvplot(km_0_pct_censor, title = "KM Estimates 4% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl1$plot + pl2$plot
+pl3$plot + pl4$plot
+```
+
+Even from these plots alone, we can see how much of an effect the censoring rate has on the shape, and confidence intervals of the survival curves. We can clearly see the data with the highest censoring rate (40%) has a flatter right tail, and does not accurately capture the survival probabilities from the data, and it also has very large confidence bands, which means the KM estimates have high variance.
+
+However, as the censoring rate decreases, and when we look at the data with the lowest censoring rates(10% and 4%), we can see that the KM estimates have much lower variance, slimmer confidence bands, and the right tails more accurately capture the actual survival probabilities.
+
+The survival curves suggest that the two treatment groups have considerably different survival probabilities. We can perform a logrank test to see if they are significantly different.
+
+```{r}
+logrank <- survdiff(Surv(time, status) ~ factor(group),
+                             data=df_40_percent)
+logrank
+```
+
+The logrank test suggests that two treatment groups's survival curves are statistically significantly different, since $p < 0.05$.
+
+##### Cox PH models
+
+```{r}
+cox_model1 <- coxph(Surv(time, status) ~ factor(group), data=df_40_percent)
+summary(cox_model1)
+
+cox_model2 <- coxph(Surv(time, status) ~ factor(group), data=df_20_percent)
+summary(cox_model2)
+
+cox_model3 <- coxph(Surv(time, status) ~ factor(group), data=df_10_percent)
+summary(cox_model3)
+
+cox_model4 <- coxph(Surv(time, status) ~ factor(group), data=df_0_percent)
+summary(cox_model4)
+```
+
+##### Assessing Proportional Hazards Assumption
+
+```{r, fig.align = 'center'}
+
+ggsurvplot(km_40_pct_censor, fun = "cloglog")$plot +
+  ggsurvplot(km_20_pct_censor, fun = "cloglog")$plot
+
+ggsurvplot(km_10_pct_censor, fun = "cloglog")$plot +
+  ggsurvplot(km_0_pct_censor, fun = "cloglog")$plot
+```
+
+The visual assessment of the Proportional Hazards assumption seems to hold, since the log(-log) survival probabilities for both groups are parallel. However, there is a single point where they appear to touch, to investigate further, we can perform a `cox.zph` test.
+
+```{r}
+cox.zph(cox_model1)
+cox.zph(cox_model2)
+cox.zph(cox_model3)
+cox.zph(cox_model4)
+```
+
+The null hypothesis of this test is that the PH assumption holds. And since none of the models have a p-value less than 0.05 for this test, we can conclude that the PH assumption holds.
+
+```{r}
+true_cox_ph_coeff <- -beta/(1/shape)
+model1_coeff <- -0.5659
+model2_coeff <- -0.6256
+model3_coeff <- -0.54206
+model4_coeff <- -0.5575
+
+coefficients_df <- tibble(true_cox_ph_coeff, model1_coeff, model2_coeff,
+                          model3_coeff, model4_coeff)
+
+
+coefficients_df <- data.frame(
+  coefficient = c("40% Cens.", "20% Cens.", "10% Cens.", "4% Cens."),
+  value = c(-0.5659, -0.6256, -0.54206, -0.5575),
+  SE = c(0.1180, 0.1027, 0.09659, 0.0940)
+)
+
+coefficients_df$exponential <- exp(coefficients_df$value)
+coefficients_df$lower <- exp(coefficients_df$value - coefficients_df$SE) # Lower bound
+coefficients_df$upper <- exp(coefficients_df$value + coefficients_df$SE) # Upper bound
+
+
+# Create a bar plot for exponential coefficient values and se's
+ggplot(coefficients_df, aes(x = coefficient, y = exponential)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.1, color = "black") +
+  geom_hline(yintercept = exp(true_cox_ph_coeff), color = "red",
+             linetype = "dashed", size = 0.5) +
+  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff) + 0.1,
+           label = "True Hazard Ratio Value",
+           color = "red", hjust = 0.5) +
+  labs(title = "Comparison of Exponential Coefficients Against True Coefficient",
+       x = "Model",
+       y = "Exponential Value of Estimated Coefficients") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+To make it easier to see the differences between the coefficient estimates and the true hazard ratio, we can look at this bar plot. From the plot we can observe that the different censoring rates do not have much of an effect on the estimated hazard ratios, and they are all very close to the true hazard ratio.
+
+We can interpret the hazards ratio in the following way, using the hazard ratio from the least censored model:
+
+The hazard of relapse for individuals who are quitting smoking is $1.746$ larger for those who get the placebo, than those who get the treatment (Nicotine Replacement Therapy).
+
+# Simulation 2: Placebo-Treatment (Nicotine Replacement Therapy) Simulation - Days to Relapse, Two covariates
+
+Now, we replicate this experiment setup with an additional covariate that represents the average number of cigarettes consumed by each participant.
+
+The random variable `cigs_per_day` represents the average number of cigarettes consumed by the participants, and is sampled from a truncated normal distribution with $\mu = 10$, and $\sigma = 5$.
+
+```{r}
+set.seed(11)
+
+n <- 500
+
+n_treatment <- n / 2
+n_placebo <- n / 2
+
+shape <- 0.8     # Shape parameter (Weibull) -> 1/scale = Tau
+scale_base <- 3     # Baseline scale parameter -> intercept
+beta <- 0.7       # Treatment effect = Beta
+beta_cigs <- 0.05   # log hazard increase per cigarette
+
+# Simulate continuous covariate (cigarette consumption)
+cigs_placebo <- rtruncnorm(a=0, n_placebo, mean = 10, sd = 5)
+cigs_treatment <- rtruncnorm(a=0,n_treatment, mean = 10, sd = 5)
+cigs_per_day <- c(cigs_placebo, cigs_treatment)
+
+
+scale_placebo <- exp(scale_base + beta_cigs * cigs_placebo)
+T_placebo <- rweibull(n_placebo, shape = shape, scale = scale_placebo)
+
+
+scale_treatment <- exp(scale_base + beta + beta_cigs * cigs_treatment)
+T_treatment <- rweibull(n_treatment, shape = shape, scale = scale_treatment)
+
+time <- c(T_placebo, T_treatment)
+status <- rep(1, n)
+group <- rep(c("Placebo", "Treatment"), each = n / 2)
+
+data <- data.frame(
+  time = time,
+  status = status,
+  group = group,
+  cigs_per_day = cigs_per_day
+)
+```
+
+### Verifying The Data Generation
+
+```{r}
+aft <- survreg(Surv(time, status) ~ factor(group) + cigs_per_day, data=data,
+               dist = "weibull")
+summary(aft)
+```
+
+We can see from the output of the AFT model that the coefficient estimates, and the estimate of the scale, $\tau$ are extremely close to the true values, therefore we can verify that the data generation worked properly.
+
+### Censoring
+
+The same censoring mechanism was employed. However, censoring distribution parameters were adjusted to achieve the same level of censoring rates.
+
+```{r}
+set.seed(10)
+# Censoring Rate = 0.4
+c_values <- rtruncnorm(n, a=0, mean=40, sd=30)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else if(c_values[i] < time[i]){
+    status[i] <- 0
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_40_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+#--------------------------------------------------------------------
+# Censoring Rate = 0.2
+c_values <- rtruncnorm(n, a=0, mean=90, sd=30)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else if(c_values[i] < time[i]){
+    status[i] <- 0
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_20_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+
+#--------------------------------------------------------------------
+# Censoring Rate = 0.1
+c_values <- rtruncnorm(n, a=0, mean=160, sd=30)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else if(c_values[i] < time[i]){
+    status[i] <- 0
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_10_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+
+#--------------------------------------------------------------------
+# Censoring Rate = 0 (Only Type I Right Censor present)
+time <- c(T_placebo, T_treatment)
+
+status <- rep(NA, n)
+
+for(i in 1:n){
+  if(time[i] > 120){
+    status[i] <- 0
+    time[i] <- 120
+  }
+  else{
+    status[i] <- 1
+  }
+}
+
+df_0_percent <- data.frame(time, status, group)
+paste("This censoring rate is:", 100* (1 - (sum(status) /n)), "%")
+```
+
+### Cox Proportional Hazards Model Fitting and Evaluation
+
+##### Fitting the models
+
+```{r}
+km_40_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_40_percent)
+km_20_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_20_percent)
+km_10_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_10_percent)
+km_0_pct_censor <- surv_fit(Surv(time, status) ~ factor(group),
+                             data=df_0_percent)
+```
+
+##### Visualizing Survival Probabilities
+
+```{r, fig.align = 'center'}
+pl1 <- ggsurvplot(km_40_pct_censor, title = "KM Estimates 40% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl2 <- ggsurvplot(km_20_pct_censor, title = "KM Estimates 20% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl3 <- ggsurvplot(km_10_pct_censor, title = "KM Estimates 10% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl4 <- ggsurvplot(km_0_pct_censor, title = "KM Estimates 4% Censoring",
+                  conf.int = TRUE, censor.shape = "|")
+
+pl1$plot + pl2$plot
+pl3$plot + pl4$plot
+```
+
+A similar observation from Simulation 1 can be made. Higher censoring rates lead to different shaped Survival curves.
+
+##### Cox PH models
+
+```{r}
+cox_model1 <- coxph(Surv(time, status) ~ factor(group) + cigs_per_day,
+                    data=df_40_percent)
+summary(cox_model1)
+
+cox_model2 <- coxph(Surv(time, status) ~ factor(group) + cigs_per_day,
+                    data=df_20_percent)
+summary(cox_model2)
+
+cox_model3 <- coxph(Surv(time, status) ~ factor(group) + cigs_per_day,
+                    data=df_10_percent)
+summary(cox_model3)
+
+cox_model4 <- coxph(Surv(time, status) ~ factor(group) + cigs_per_day,
+                    data=df_0_percent)
+summary(cox_model4)
+```
+
+##### Checking Proportional Hazards Assumption
+
+```{r, fig.align = 'center'}
+ggsurvplot(km_40_pct_censor, fun = "cloglog")$plot +
+  ggsurvplot(km_20_pct_censor, fun = "cloglog")$plot
+
+ggsurvplot(km_10_pct_censor, fun = "cloglog")$plot +
+  ggsurvplot(km_0_pct_censor, fun = "cloglog")$plot
+```
+
+The visual assessment shows that the survival curves are parallel, yet there is a single point of intersection, to evaluate further, we can perform a `cox.zph` test.
+
+```{r}
+cox.zph(cox_model1)
+cox.zph(cox_model2)
+cox.zph(cox_model3)
+cox.zph(cox_model4)
+```
+
+From the results of the tests, we see that none of the p-values are less than 0.05, so the Proportional Hazards assumption holds for all models.
+
+```{r}
+true_cox_ph_coeff_GROUP <- -beta/(1/shape)
+model1_coeff_GROUP <- -0.46007
+model2_coeff_GROUP <- -0.52070
+model3_coeff_GROUP <- -0.54255
+model4_coeff_GROUP <- -0.54575
+
+true_cox_ph_coeff_CIGS <- -beta_cigs/(1/shape)
+model1_coeff_CIGS <- -0.06370
+model2_coeff_CIGS <- -0.05936
+model3_coeff_CIGS <- -0.05628
+model4_coeff_CIGS <- -0.05759
+
+
+
+coefficients_df <- data.frame(
+  model = rep(c("40% Cens.", "20% Cens.", "10% Cens.", "0% Cens."), 2),
+  covariate = rep(c("GROUP", "CIGS"), each = 4),
+  value = c(-0.46007, -0.52070, -0.54255, -0.54575, # GROUP coefficients
+            -0.06370, -0.05936, -0.05628, -0.05759), # CIGS coefficients
+  SE = c(0.11673, 0.10182, 0.09689, 0.09669, # GROUP standard errors
+         0.01297, 0.01133, 0.01079, 0.01078) # CIGS standard errors
+)
+
+coefficients_df$exponential <- exp(coefficients_df$value)
+coefficients_df$lower <- exp(coefficients_df$value - coefficients_df$SE)
+coefficients_df$upper <- exp(coefficients_df$value + coefficients_df$SE)
+
+
+#  grouped bar plot with error bars
+ggplot(coefficients_df, aes(x = model, y = exponential, fill = covariate)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.6) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), position = position_dodge(0.6),
+                width = 0.25, color = "black") +
+  geom_hline(yintercept = exp(true_cox_ph_coeff_GROUP), color = "red",
+             linetype = "dashed", size = 0.5) +
+  geom_hline(yintercept = exp(true_cox_ph_coeff_CIGS), color = "blue",
+             linetype = "dashed", size = 0.5) +
+  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff_GROUP) + 0.05,
+           label = "True GROUP Coefficient", color = "red", hjust = 0.5) +
+  annotate("text", x = 2.5, y = exp(true_cox_ph_coeff_CIGS) + 0.05,
+           label = "True CIGS Coefficient", color = "blue", hjust = 0.5) +
+  labs(title = "Comparison of Exponential Coefficients Against True Coefficients",
+       x = "Model",
+       y = "Exponential Value") +
+  scale_fill_manual(values = c("lightgreen", "skyblue"),
+                    labels = c("GROUP", "CIGS")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.title = element_blank())
+
+```
+
+Interestingly, the exponential coefficient estimates for the continuous predictor `cigarettes_per_day` are relatively stable despite the different censoring rates. However, in this simulation the treatment group covariates are impacted more by the higher censoring rates, than the previous simulation. We can see that there is a considerable divergence in the coefficient estimate of treatment group compared to the true coefficient, in the higher censoring rate models; and they also have much larger standard errors.
+
+We can interpret the hazards ratio in the following way, using the hazard ratio from the least censored model:
+
+The hazard of relapse for individuals who are quitting smoking is $1.059$ larger when $z_2:\text{Average Cigarettes Per Day}$ is one unit larger, controlling for treatment.
+
+The hazard of relapse for individuals who are quitting smoking is $1.726$ larger for those who get the placebo, than those who get the treatment (Nicotine Replacement Therapy), controlling for cigarette consumption.
+
+## Conclusion
+
+Contrary to my intuition, the Cox Proportional Hazards model was fairly robust to higher censoring rates, and was able to produce very close estimates of the Hazard ratios. However, coefficient estimates for the treatment group suffered more from the higher censoring rates in the 2nd simulation, which might indicate that including a continuous covariate on top of the treatment group covariate makes the Cox PH model more biased when the data has higher censoring rates.
